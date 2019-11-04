@@ -1,0 +1,167 @@
+---
+title: "Prediction Assignment Writeup"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+We are going to predict the manner in which people do some exercises. We are going to test this analyzing the "classe" variable in the training set.       
+We are going to describe how we built our model.
+
+##Prerrequisites
+
+First of all we are going to install the libraries we are going to use in the development.
+
+```{r}
+library(caret)
+library(rpart)
+library(rattle) #For decision tree.
+```
+
+We load the train and test sets.
+
+```{r}
+training_set <- read.csv("pml-training.csv")
+testing_set <- read.csv("pml-testing.csv")
+```
+
+We split the training set using 70 % only for training and 30 % for test.       
+The goal field is "classe" which contains the different ways to do the exercise.
+```{r}
+splittedTrain  <- createDataPartition(training_set$classe, p=0.7, list=FALSE)
+```
+
+We split the training set in two sets to do the predictions.
+
+```{r}
+train_splittedTrain <- training_set[splittedTrain,]
+test_splittedTrain <- training_set[-splittedTrain,]
+```
+
+And we can see the number of observations and variables of each.
+```{r}
+dim(train_splittedTrain)
+dim(test_splittedTrain)
+```
+
+We calculate the zero and near Zero-variance variables, (they only have a single unique value).       
+This may cause that the model crashed or the fit was unstable.
+
+```{r}
+nzv_delete <- nearZeroVar(train_splittedTrain)
+
+#We build a new model without those fields.
+filtered_inTrain <- train_splittedTrain[,-nzv_delete]
+```
+
+Now we have less variables.
+```{r}
+dim(filtered_inTrain)
+```
+
+
+And we remove the fields which have a big number of NAs.
+```{r}
+NA_values <- sapply(filtered_inTrain, function(x) mean(is.na(x))) > 0.95
+filtered_inTrain_withoutNA <- filtered_inTrain[,NA_values == FALSE]
+```
+
+
+We now only have 59 fields.
+```{r}
+dim(filtered_inTrain_withoutNA)
+```
+
+We remove the first five fields because they are for identification.
+
+```{r}
+filtered_inTrain_withoutNA_withoutIdentif <- filtered_inTrain_withoutNA[,-(1:5)]
+```
+
+We have 54 variables now.
+```{r}
+dim(filtered_inTrain_withoutNA_withoutIdentif)
+```
+
+We copy the data frame to a new data frame to work with it.
+
+```{r}
+work_data <- filtered_inTrain_withoutNA_withoutIdentif
+```
+
+
+## Methods    
+
+The target variable is cualitative then this is a clasification question with more than two solutions. Then we are going to use methods for clasification problems.        
+The most common measure of classifier quality is accuracy. We are going measure this with the confussion matrix.
+
+
+
+##A) Decision tree.
+This can be used to quickly predict categorical outcomes.
+
+```{r}
+set.seed(33) #We use seed for reproducibility.
+```
+
+We build a decision tree with rpart(). We use the class method because the target variable is a factor.
+
+```{r}
+tree_model <- rpart(classe~.,data=work_data, method = "class")
+```
+
+We plot the tree with rattle library.
+```{r}
+fancyRpartPlot(tree_model)
+```
+
+
+Prediction over data test.
+```{r}
+predict_with_Decision_Tree <- predict(tree_model, newdata = test_splittedTrain, type = "class")
+```
+
+We are to obtain the confussion matrix.
+```{r}
+confussion_Matrix_DecTree <- confusionMatrix(predict_with_Decision_Tree, test_splittedTrain$classe)
+confussion_Matrix_DecTree
+```
+
+And we plot the confussion matrix.
+
+```{r}
+plot(confussion_Matrix_DecTree$table, col = confussion_Matrix_DecTree$byClass,
+     main = paste("Decision Tree Accuracy = ", round(confussion_Matrix_DecTree$overall['Accuracy'],4)))
+```
+
+
+##B) Random Forests with 5 folds in cross-validation
+
+```{r}
+set.seed(33)
+rf_model<-train(classe~.,data=work_data,method="rf", trControl=trainControl(method="cv",number=5), prox=TRUE,allowParallel=TRUE)
+print(rf_model)
+```
+
+```{r}
+rf_model$finalModel
+```
+
+Prediction over data test.
+```{r}
+predict_with_Random_Forest <- predict(rf_model, newdata=test_splittedTrain)
+confussion_Matrix_RForest <- confusionMatrix(predict_with_Random_Forest, test_splittedTrain$classe)
+confussion_Matrix_RForest
+```
+
+We plot the confussion matrix.
+```{r}
+plot(confussion_Matrix_RForest$table, col = confussion_Matrix_RForest$byClass,
+     main = paste("Random Forest Accuracy = ", round(confussion_Matrix_RForest$overall['Accuracy'],4)))
+```
+
+
+## Conclussions
+
+We can see random forests method is better to predict outcomes and obtain a fitter values for "classe" attribute.
